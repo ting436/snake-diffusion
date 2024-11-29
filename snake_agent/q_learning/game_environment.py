@@ -107,6 +107,7 @@ class GameEnvironment:
         #     reward += -0.01
         if self.steps_taken >= 100 * len(self.game.snake):
             game_over = True
+            self.game.draw_game_over()
             reward = -10
         return reward, game_over
 

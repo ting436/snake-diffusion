@@ -41,6 +41,7 @@ class QAgent:
         self.env = env
         self.steps = 0
         self.snapshot_path = snapshot_path
+        self.recorded_actions = []
     
     def _remember(
         self,
@@ -81,9 +82,20 @@ class QAgent:
         final_move[move] = 1
         return final_move
     
+    def _save_snapshot(self, step: int):
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        dir_path = os.path.join(dir_path, self.snapshot_path)
+        plt.imsave(os.path.join(dir_path, f'{step}.jpg'), self.env.game.get_snapshot().transpose(1,0,2))
+    
+    def _save_actions(self):
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        file_path = os.path.join(dir_path, "actions")
+        with open(file_path, mode="w") as file:
+            file.write("\n".join([str(action) for action in self.recorded_actions]))
+    
     def play_step(
         self,
-        record_snapshot: bool = False,
+        record: bool = False,
         step: Optional[int] = None
     ) -> Tuple[np.ndarray, List[int], int, np.ndarray, bool]:
         old_state = self.env.current_state
@@ -91,42 +103,61 @@ class QAgent:
         self.steps += 1
         if step is None:
             step = self.steps
-        if record_snapshot:
-            dir_path = os.path.dirname(os.path.realpath(__file__))
-            dir_path = os.path.join(dir_path, self.snapshot_path)
-            plt.imsave(os.path.join(dir_path, f'snapshot_{step}.jpg'), self.env.game.get_snapshot())
         new_state, reward, done = self.env.step(action)
+        if record:
+            self._save_snapshot(step)
+            if np.array_equal(action, [0, 1, 0]):
+                self.recorded_actions.append(1)
+            elif np.array_equal(action, [0, 0, 1]):
+                self.recorded_actions.append(2)
+            else:
+                self.recorded_actions.append(4)
         return old_state, action, reward, new_state, done
+    
+    # enter - 3
+    # change dir - 1 and 2
+    # 4 - idle direction
+    # 0 - no action
 
-    def train(self, iterations: int, show_plot: bool = False):
-        record = 0
+    def train(self, iterations: int, show_plot: bool = False, record: bool = False):
+        top_result = 0
         total_score = 0
         plot_scores = []
         plot_mean_scores = []
         self.steps = 0
+        self.recorded_actions = []
         for _ in range(iterations):
-            old_state, action, reward, new_state, done = self.play_step()
+            old_state, action, reward, new_state, done = self.play_step(
+                record=record and self.env.count_games >= 100
+            )
             self._train_short_memory(old_state, action, reward, new_state, done)
             self._remember(old_state, action, reward, new_state, done)
 
             if done:
                 score = self.env.game.score
                 self.env.reset()
+                if record and self.env.count_games > 100:
+                    self.steps += 1
+                    self.recorded_actions.append(3)
+                    self._save_snapshot(self.steps)
+                self._save_actions()
+
                 self._train_long_memory()
 
-                if score > record:
-                    record = score
+                if score > top_result:
+                    top_result = score
                     self.save_agent()
 
-                print('Game', self.env.count_games, 'Score', score, 'Record:', record)
+                print('Game', self.env.count_games, 'Score', score, 'Record:', top_result)
                 if show_plot:
                     plot_scores.append(score)
                     total_score += score
                     mean_score = total_score / self.env.count_games
                     plot_mean_scores.append(mean_score)
                     plot(plot_scores, plot_mean_scores)
-            if self.env.game.score > record:
+            if self.env.game.score > top_result:
                 self.save_agent()
+        self._save_actions()
 
     def save_agent(self):
         dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -144,13 +175,12 @@ def play():
         total_reward = 0
         up_count = 0
         while not done:
-            _, _, _, _, done = agent.play_step(record_snapshot=True)
+            _, _, _, _, done = agent.play_step()
 
 if __name__ == '__main__':
-    game = SnakeGame(w=160, h=120, speed=10000, block_size=8)
+    game = SnakeGame(w=60, h=60, speed=10, block_size=5)
     env = GameEnvironment(game)
-    agent = QAgent(env, path="model/int_model")
-    # agent.train(100000, True)
-    play()
-        
+    agent = QAgent(env, path="model-internal/60_model")
+    # agent.train(100000, False, True)
+    play()  
     # print(f"Episode {episode + 1}: Score = {total_reward}")

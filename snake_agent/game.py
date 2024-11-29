@@ -49,6 +49,11 @@ class SnakeGame:
         
         # init game state
         self.reset()
+
+        # import os
+        # import matplotlib.pyplot as plt
+        # dir_path = os.path.dirname(os.path.realpath(__file__))
+        # plt.imsave(os.path.join(dir_path, f'test.jpg'), self.get_snapshot().transpose(1,0,2))
     
     def reset(self):
         # init snake
@@ -156,11 +161,7 @@ class SnakeGame:
         game_over = False
         if self.is_collision():
             game_over = True
-            font = pygame.font.Font(None, self.block_size)
-            text = font.render('Game Over - Press Enter to Play Again', True, WHITE)
-            text_rect = text.get_rect(center=(self.w/2, self.h/2))
-            self.display.blit(text, text_rect)
-            pygame.display.flip()
+            self.draw_game_over()
             return game_over, self.score
         
         # 5. update ui and clock
@@ -169,6 +170,13 @@ class SnakeGame:
         
         # 6. return game over and score
         return game_over, self.score
+    
+    def draw_game_over(self):
+        font = pygame.font.Font(None, self.block_size)
+        text = font.render('Game Over - Press Enter to Play Again', True, WHITE)
+        text_rect = text.get_rect(center=(self.w/2, self.h/2))
+        self.display.blit(text, text_rect)
+        pygame.display.flip()
     
     def is_collision(self, point: Optional[Point] = None):
         if point is None:
@@ -207,7 +215,7 @@ class SnakeGame:
         self.head = Point(x, y)
 
 if __name__ == '__main__':
-    game = SnakeGame(w=160,h=120, speed=10, block_size=20)
+    game = SnakeGame(w=60, h=60, speed=10, block_size=4)
     
     # game loop
     while True:
