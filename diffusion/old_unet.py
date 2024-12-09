@@ -266,3 +266,25 @@ class UNet(nn.Module):
 
         return x
     
+if __name__ == "__main__":
+    size = (64, 64)
+    input_channels = 3
+    context_length = 4
+    actions_count = 5
+    T = 5
+    batch_size = 3
+    unet = UNet(
+        (input_channels) * (context_length + 1),
+        3,
+        T,
+        actions_count,
+        context_length,
+        steps=(1,2,3)
+    )
+    img = torch.randn((batch_size, input_channels, *size))
+    prev_frames = torch.randn((batch_size, input_channels, context_length, *size))
+    frames = torch.concat([img[:, :, None, :, :], prev_frames], dim=2).flatten(1,2)
+
+    prev_actions = torch.randint(low=0, high=actions_count, size=(batch_size, context_length))
+    t = torch.randint(1, T + 1, (batch_size,))
+    unet.forward(frames, t.unsqueeze(1), prev_actions)

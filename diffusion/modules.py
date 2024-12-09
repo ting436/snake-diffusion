@@ -1,3 +1,5 @@
+from functools import partial
+
 import torch
 import torch.nn as nn
 import math
@@ -29,6 +31,47 @@ class PositionalEmbedding(nn.Module):
 
     def forward(self, x: torch.Tensor):
         return self.pe[x].reshape(x.shape[0], self.output_dim)
+    
+Conv1x1 = partial(nn.Conv2d, kernel_size=1, stride=1, padding=0)
+Conv3x3 = partial(nn.Conv2d, kernel_size=3, stride=1, padding=1)
+
+# GroupNorm and conditional GroupNorm
+
+GROUP_SIZE = 32
+GN_EPS = 1e-5
+
+class GroupNorm(nn.Module):
+    def __init__(self, in_channels: int) -> None:
+        super().__init__()
+        num_groups = max(1, in_channels // GROUP_SIZE)
+        self.norm = nn.GroupNorm(num_groups, in_channels, eps=GN_EPS)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.norm(x)
+    
+from torch.nn import functional as F
+class MultiheadAttentionV2(nn.Module):
+    def __init__(self, in_channels: int, head_dim: int = 8) -> None:
+        super().__init__()
+        self.n_head = max(1, in_channels // head_dim)
+        assert in_channels % self.n_head == 0
+        self.norm = GroupNorm(in_channels)
+        self.qkv_proj = Conv1x1(in_channels, in_channels * 3)
+        self.out_proj = Conv1x1(in_channels, in_channels)
+        nn.init.zeros_(self.out_proj.weight)
+        nn.init.zeros_(self.out_proj.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        n, c, h, w = x.shape
+        x = self.norm(x)
+        qkv = self.qkv_proj(x)
+        qkv = qkv.view(n, self.n_head * 3, c // self.n_head, h * w).transpose(2, 3).contiguous()
+        q, k, v = [x for x in qkv.chunk(3, dim=1)]
+        att = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1))
+        att = F.softmax(att, dim=-1)
+        y = att @ v
+        y = y.transpose(2, 3).reshape(n, c, h, w)
+        return x + self.out_proj(y)
     
 class MultiheadAttention(nn.Module):
     def __init__(self, input_dim: int, head_dim: int = 8) -> None:
@@ -71,8 +114,6 @@ class MultiheadAttention(nn.Module):
         res = self.mlp(res) + res
         res = einops.rearrange(res, "b (h w) c -> b c h w", h=h, w=w)
         return res
-    
-GROUP_SIZE = 32
 
 class NormBlock(nn.Module):
     def __init__(self, in_channels, cond_channels):

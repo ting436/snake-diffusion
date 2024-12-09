@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 from typing import List, Tuple, Optional
 import numpy as np
+import torch.nn.functional as F
 
 class DDPM(nn.Module):
     def __init__(
@@ -31,11 +32,12 @@ class DDPM(nn.Module):
     def forward(self, imgs: torch.Tensor, prev_frames: torch.Tensor, prev_actions: torch.Tensor):
         assert prev_frames.shape[1] == prev_actions.shape[1] == self.context_length
         t = torch.randint(low=1, high=self.T+1, size=(imgs.shape[0],), device=self.device)
+        imgs = F.pad(imgs, (2, 2, 2, 2))
         noise = torch.randn_like(imgs, device=self.device)
         batch_size, channels, width, height = imgs.shape
         noise_imgs = self.sqrt_bar_alpha_t_schedule[t].view((batch_size, 1, 1 ,1)) * imgs \
             + self.sqrt_minus_bar_alpha_t_schedule[t].view((batch_size, 1, 1, 1)) * noise
-        
+        prev_frames = F.pad(prev_frames, (2, 2, 2, 2))
         noise_imgs = torch.concat([noise_imgs[:, None, :, :, :], prev_frames], dim=1).flatten(1,2)
 
         pred_noise = self.eps_model(noise_imgs, t.unsqueeze(1), prev_actions)
@@ -52,6 +54,8 @@ class DDPM(nn.Module):
         self.eval()
         with torch.no_grad():
             x_t = torch.randn(1, *size, device=self.device)
+            x_t = F.pad(x_t, (2, 2, 2, 2))
+            prev_frames = F.pad(prev_frames, (2, 2, 2, 2))
             if range_t is None:
                 range_t = range(self.T, 0, -1)
             for t in range_t:
@@ -65,16 +69,16 @@ class DDPM(nn.Module):
             return x_t
         
 if __name__ == "__main__":
-    size = (64, 64)
+    size = (60, 60)
     input_channels = 3
-    context_length = 3
+    context_length = 4
     actions_count = 5
-    T = 5
+    T = 1000
     batch_size = 3
 
     from unet import UNet
 
-    unet = UNet((input_channels + 1) * context_length, 3, T, actions_count, context_length)
+    unet = UNet((input_channels) * (context_length + 1), 3, T, actions_count, context_length)
     ddpm = DDPM(
         T=T,
         eps_model=unet,

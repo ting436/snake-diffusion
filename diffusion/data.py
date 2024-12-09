@@ -32,7 +32,7 @@ class SequencesDataset(Dataset):
     def __len__(self):
         return len(self.sequences)
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, List[torch.Tensor], torch.Tensor]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         imgs, actions = self.sequences[index]
         last_img = imgs[-1]
         def do_transform(img_path: str) -> Any:

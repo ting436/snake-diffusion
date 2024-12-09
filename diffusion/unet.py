@@ -15,7 +15,7 @@ class UNet(nn.Module):
         steps=(2, 2, 2, 2),
         channels = (64, 64, 64, 64),
         cond_channels = 256,
-        attn_step_indexes = [False, True, False, False],
+        attn_step_indexes = [False, False, False, False],
         is_debug = False
     ):
         super().__init__()
@@ -93,22 +93,18 @@ class UNet(nn.Module):
         return x
     
 if __name__ == "__main__":
-    size = (64, 64)
+    size = (60, 60)
     input_channels = 3
     context_length = 4
     actions_count = 5
-    T = 5
-    batch_size = 3
+    T = 1000
+    batch_size = 2
     unet = UNet(
         (input_channels) * (context_length + 1),
         3,
         T,
         actions_count,
-        context_length,
-        steps=(1,2,3),
-        channels=(16,32,64),
-        cond_channels=64,
-        attn_step_indexes=[False,False,False]
+        context_length
     )
     img = torch.randn((batch_size, input_channels, *size))
     prev_frames = torch.randn((batch_size, input_channels, context_length, *size))

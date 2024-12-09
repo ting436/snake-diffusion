@@ -5,6 +5,7 @@ import pygame
 from PIL import Image
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 from ddpm import DDPM
 from unet import UNet
@@ -70,17 +71,18 @@ class Game:
             next_obs = self.ddpm.sample(
                 self.size,
                 torch.stack(obs).unsqueeze(0),
-                torch.tensor(actions, dtype=torch.int).to(self.device).unsqueeze(0),
+                torch.tensor(actions, dtype=torch.int).to(self.device).unsqueeze(0)
                 # [self.T // 2, 1]
             )
 
             draw_game(next_obs)
-            obs = obs[1:] + [next_obs[0]]
+            for j in range(self.context_length):
+                img = (obs[j] * 127.5 + 127.5).long().clip(0,255).permute(1,2,0).detach().cpu().numpy().astype(np.uint8)
+                plt.imsave(f'test_{i}_{j}.jpg', img)
+            obs = obs[1:] + [next_obs[0][:, 2:-2, 2:-2]]
 
             pygame.display.flip()  # update screen
             clock.tick(self.fps)  # ensures game maintains the given frame rate
-
-            import matplotlib.pyplot as plt
             
             plt.imsave(f'test_{i}.jpg', pygame.surfarray.array3d(screen).transpose(1,0,2))
 
@@ -91,15 +93,15 @@ if __name__ == "__main__":
     # For Mac OS
     if torch.backends.mps.is_available():
         device = "mps"
-    PATH_TO_READY_MODEL = "./diffusion/model_15.pth"
+    PATH_TO_READY_MODEL = "./test_models/diffusion/model_3.pth"
     T = 1000
     # T = 5
-    CONTEXT_LENGTH = 3
+    CONTEXT_LENGTH = 4
     ACTIONS_COUNT = 5
     import old_unet
     ddpm = DDPM(
         T = T,
-        eps_model=old_unet.UNet(
+        eps_model=UNet(
             in_channels=3 * (CONTEXT_LENGTH + 1),
             out_channels=3,
             T=T+1,
