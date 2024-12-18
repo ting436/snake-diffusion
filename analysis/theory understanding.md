@@ -85,3 +85,11 @@ What's plan?
 2. Understand on toy examples how to calculate score $\nabla_x \log p(x)$ - score, calculated with $E_{p_v}E_{p_data}[v^T∇_x s_θ(x)v + \frac{1}{2}||s_θ(x)||_2^2]$ and how it depends on data
 3. EDM - how it draw a formula $\mathbf{D}_\theta(x_{i+1}^T, y_i^T) = c_{\text{skip}}^{\tau} x_{i+1}^T + c_{\text{out}}^{\tau} \mathbf{F}_\theta(c_{\text{in}}^{\tau} x_{i+1}^T, y_i^T)$
 4. Rewrite DDPM
+
+After 3 epoch context destroys after 7 epoch more context
+
+Questions and thoughts:
+1. DDIM is understandble, why do they use cumolative alphas ?
+2. Look at the proof of the math
+3. SDE - just formula which contains log of distribution(which means score of its disctribution) and inference with Lavgenengin Dynamics. 
+4. How to get this formula ? $\mathbb{E}_{p_{\text{data}}}\left[\text{tr}(\nabla_\mathbf{x}\mathbf{s}_\theta(\mathbf{x})) + \frac{1}{2}\|\mathbf{s}_\theta(\mathbf{x})\|^2_2\right]$

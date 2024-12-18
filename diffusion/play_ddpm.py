@@ -7,8 +7,10 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from ddpm import DDPM
-from unet import UNet
+from ddpm.ddpm import DDPM
+import ddpm.modules_v2 as modules_v2
+from data import SequencesDataset
+import random
 
 class Game:
     def __init__(
@@ -17,23 +19,16 @@ class Game:
         ddmp: DDPM,
         context_length: int,
         fps: int,
-        default_img_path: str,
         device: str,
-        T: int
+        dataset: SequencesDataset
     ) -> None:
         self.ddpm = ddmp
         _, self.height, self.width = size
         self.fps = fps
         self.context_length = context_length
         self.size = size
-
-        import torchvision.transforms as transforms
-        self.default_img = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((.5,.5,.5), (.5,.5,.5))
-        ])(Image.open(default_img_path).convert('RGB')).to(device)
         self.device = device
-        self.T = T
+        self.dataset = dataset
 
     def run(self) -> None:
         pygame.init()
@@ -48,9 +43,16 @@ class Game:
             surface = pygame.surfarray.make_surface(img)
             screen.blit(surface, (0, 0))
 
-        obs, actions = [self.default_img.clone().to(self.device)] * self.context_length, [4] * self.context_length
+        def reset() -> Tuple[torch.Tensor, torch.Tensor]:
+            index = random.randint(0, len(self.dataset) - 1)
+            _, last_imgs, actions = dataset[index]
 
-        for i in range(3):
+            obs = last_imgs.to(device)
+            actions = actions.to(device)
+            return obs, actions
+        obs, actions = reset()
+        number_frame = 0
+        while True:
             action = 0
             pygame.event.pump()
 
@@ -60,31 +62,30 @@ class Game:
 
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_r:
-                        obs, actions = [self.default_img.clone().to(self.device)] * self.context_length, [4] * self.context_length
+                        obs, actions = reset()
                     elif event.key == pygame.K_UP:
-                        actions = actions[1:] + [1]
+                        actions = torch.concat((actions[1:], torch.tensor(1, device=self.device).unsqueeze(0)))
                     elif event.key == pygame.K_DOWN:
-                        actions = actions[1:] + [2]
+                        actions = torch.concat((actions[1:], torch.tensor(2, device=self.device).unsqueeze(0)))
                     elif event.key == pygame.K_RETURN:
-                        actions = actions[1:] + [3]
+                        actions = torch.concat((actions[1:], torch.tensor(3, device=self.device).unsqueeze(0)))
             
-            next_obs = self.ddpm.sample(
+            next_obs = self.ddpm.ddim_sample(
                 self.size,
-                torch.stack(obs).unsqueeze(0),
-                torch.tensor(actions, dtype=torch.int).to(self.device).unsqueeze(0)
-                # [self.T // 2, 1]
+                obs.unsqueeze(0),
+                torch.tensor(actions, dtype=torch.int).to(self.device).unsqueeze(0),
+                steps=20
             )
 
             draw_game(next_obs)
-            for j in range(self.context_length):
-                img = (obs[j] * 127.5 + 127.5).long().clip(0,255).permute(1,2,0).detach().cpu().numpy().astype(np.uint8)
-                plt.imsave(f'test_{i}_{j}.jpg', img)
-            obs = obs[1:] + [next_obs[0][:, 2:-2, 2:-2]]
+            obs = torch.concat((obs[1:],next_obs[0][:, 2:-2, 2:-2].unsqueeze(0)))
 
             pygame.display.flip()  # update screen
             clock.tick(self.fps)  # ensures game maintains the given frame rate
-            
-            plt.imsave(f'test_{i}.jpg', pygame.surfarray.array3d(screen).transpose(1,0,2))
+            number_frame += 1
+            if number_frame % 300:
+                obs, actions = reset()
+                draw_game(obs[-1].unsqueeze(0))
 
         pygame.quit()
 
@@ -93,15 +94,15 @@ if __name__ == "__main__":
     # For Mac OS
     if torch.backends.mps.is_available():
         device = "mps"
-    PATH_TO_READY_MODEL = "./test_models/diffusion/model_3.pth"
+    PATH_TO_READY_MODEL = "./test_models/diffusion/model_14_v2.pth"
     T = 1000
     # T = 5
     CONTEXT_LENGTH = 4
     ACTIONS_COUNT = 5
-    import old_unet
+    import ddpm.modules_v1 as modules_v1
     ddpm = DDPM(
         T = T,
-        eps_model=UNet(
+        eps_model=modules_v2.UNet(
             in_channels=3 * (CONTEXT_LENGTH + 1),
             out_channels=3,
             T=T+1,
@@ -111,7 +112,19 @@ if __name__ == "__main__":
         context_length=CONTEXT_LENGTH,
         device=device
     )
-    ddpm.load_state_dict(torch.load(PATH_TO_READY_MODEL, map_location=device))
+    ddpm.load_state_dict(torch.load(PATH_TO_READY_MODEL, map_location=device)["model"])
+    import torchvision.transforms as transforms
+    transform_to_tensor = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((.5,.5,.5), (.5,.5,.5))
+    ])
+
+    dataset = SequencesDataset(
+        images_dir="./training_data/snapshots",
+        actions_path="./training_data/actions",
+        seq_length=CONTEXT_LENGTH,
+        transform=transform_to_tensor
+    )
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     game = Game(
@@ -119,8 +132,8 @@ if __name__ == "__main__":
         ddmp=ddpm,
         context_length=CONTEXT_LENGTH,
         fps=15,
-        default_img_path=os.path.join(dir_path, "default.jpg"),
         device=device,
-        T=T
+        dataset=dataset
     )
+    os.environ["SDL_VIDEODRIVER"] = "dummy"
     game.run()

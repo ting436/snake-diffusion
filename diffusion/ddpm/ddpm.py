@@ -63,10 +63,75 @@ class DDPM(nn.Module):
                 t_tensor = torch.tensor([t], device=self.device).repeat(x_t.shape[0], 1)
                 big_x_t = torch.concat([x_t[:, None, :, :, :], prev_frames], dim=1).flatten(1,2)
                 pred_noise = self.eps_model(big_x_t, t_tensor, prev_actions)
+                
                 x_t = 1 / torch.sqrt(self.alpha_t_schedule[t]) * \
                     (x_t - pred_noise * (1 - self.alpha_t_schedule[t]) / self.sqrt_minus_bar_alpha_t_schedule[t]) + \
                     torch.sqrt(self.beta_schedule[t]) * z
             return x_t
+        
+    def ddim_sample(
+        self,
+        size: Tuple[int],
+        prev_frames: torch.Tensor,
+        prev_actions: torch.Tensor, 
+        steps: int
+    ):
+        self.eval()
+        with torch.no_grad():
+            x_t = torch.randn(1, *size, device=self.device)
+            x_t = F.pad(x_t, (2, 2, 2, 2))
+            prev_frames = F.pad(prev_frames, (2, 2, 2, 2))
+            step_size = self.T // steps
+            range_t = range(self.T, -1, -step_size)
+            next_range_t = range_t[1:]
+            range_t = range_t[:-1]
+            for i, j in zip(range_t, next_range_t):
+                t_tensor = torch.tensor([i], device=self.device).repeat(x_t.shape[0], 1)
+
+                big_x_t = torch.concat([x_t[:, None, :, :, :], prev_frames], dim=1).flatten(1,2)
+                pred_noise = self.eps_model(big_x_t, t_tensor, prev_actions)
+                alpha = self.bar_alpha_t_schedule[i]
+                next_alpha = self.bar_alpha_t_schedule[j]
+                x0 = (x_t - torch.sqrt(1 - alpha) * pred_noise) / torch.sqrt(alpha)
+                new_xt = torch.sqrt(1 - next_alpha) * pred_noise
+
+                x_t = torch.sqrt(next_alpha) * x0 + new_xt
+            return x_t
+        
+    # def sample(
+    #     self,
+    #     size: Tuple[int],
+    #     prev_frames: torch.Tensor,
+    #     prev_actions: torch.Tensor, 
+    #     num_steps=4
+    # ):
+    #     self.eval()
+    #     with torch.no_grad():
+    #         step_size = 1000 // num_steps
+    #         timesteps = list(range(1000-step_size, -1, -step_size))
+            
+    #         x_t = torch.randn(1, *size, device=self.device)
+    #         x_t = F.pad(x_t, (2, 2, 2, 2))
+    #         prev_frames = F.pad(prev_frames, (2, 2, 2, 2))
+    #         for t in timesteps:
+    #             t_tensor = torch.tensor([t], device=self.device).repeat(x_t.shape[0], 1)
+    #             big_x_t = torch.concat([x_t[:, None, :, :, :], prev_frames], dim=1).flatten(1,2)
+    #             noise_pred = self.eps_model(big_x_t, t_tensor, prev_actions)
+
+    #             alpha_t = self.alpha_t_schedule[t]
+    #             alpha_prev = self.alpha_t_schedule[max(0, t-step_size)]
+    #             beta_t = 1 - alpha_t/alpha_prev
+                
+    #             # Modified update step
+    #             x_prev = (1/torch.sqrt(alpha_prev)) * (x_t - 
+    #                     (beta_t/torch.sqrt(1-alpha_t)) * noise_pred)
+                
+    #             if t > 0:
+    #                 noise = torch.randn_like(x_t)
+    #                 x_prev = x_prev + torch.sqrt(beta_t) * noise
+                    
+    #             x_t = x_prev
+    #         return x_t
         
 if __name__ == "__main__":
     size = (60, 60)
@@ -76,7 +141,7 @@ if __name__ == "__main__":
     T = 1000
     batch_size = 3
 
-    from unet import UNet
+    from diffusion.modules_v2 import UNet
 
     unet = UNet((input_channels) * (context_length + 1), 3, T, actions_count, context_length)
     ddpm = DDPM(

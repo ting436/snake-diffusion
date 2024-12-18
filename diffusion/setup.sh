@@ -7,6 +7,9 @@ unzip snapshots.zip
 gdown https://drive.google.com/uc?id=1k1PZK6M2zS-o3WSbmSV1N1yDGLcQCoiJ
 
 pip install einops
+pip install pygame xvfb
 pip install matplotlib
+pip install keyboard
 
 mkdir val_images
+python check_time_render.py

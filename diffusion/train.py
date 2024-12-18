@@ -1,53 +1,32 @@
-from typing import Optional
+from typing import Optional, Callable
 import random
 
 import torch
-from ddpm import DDPM
 import tqdm
 from torch.utils.data.dataloader import DataLoader
-from unet import UNet
 from data import SequencesDataset
-import numpy as np
-import matplotlib.pyplot as plt
-
-def _save_imgs(
-    model: DDPM,
-    previous_frames: torch.Tensor,
-    previous_actions: torch.Tensor,
-    real_imgs: torch.Tensor,
-    epoch: int
-):
-    def get_np_img(tensor: torch.Tensor) -> np.ndarray:
-        return (tensor * 127.5 + 127.5).long().clip(0,255).permute(1,2,0).detach().cpu().numpy().astype(np.uint8)
-    new_img = model.sample(real_imgs.shape, previous_frames.unsqueeze(0), previous_actions.unsqueeze(0))
-    # new_img = real_imgs.clone().unsqueeze(0)
-
-    height_row = 5
-    col_width = 5
-    cols = len(previous_frames) + 1
-    fig, axes = plt.subplots(2, cols, figsize=(col_width * cols, height_row * 2))
-    for row in range(2):
-        for i in range(len(previous_frames)):
-            axes[row, i].imshow(get_np_img(previous_frames[i]))
-        axes[row, cols - 1].imshow(get_np_img(new_img[0]) if row == 0 else get_np_img(real_imgs))
-    plt.subplots_adjust(wspace=0, hspace=0)
-    
-    # Save the combined figure
-    plt.savefig(f"val_images/{epoch}.png", bbox_inches='tight', pad_inches=0)
-    plt.close()
 
 def train(
-    model: DDPM,
-    optimizer: torch.optim.Optimizer,
+    model: torch.nn.Module,
     epochs: int,
     device: str,
     train_dataloader: DataLoader,
     val_dataloader: DataLoader,
-    save_every_epoch: Optional[int] = None
+    save_every_epoch: Optional[int] = None,
+    existing_model_path: Optional[str] = None,
+    save_imgs: Callable[[torch.nn.Module, torch.Tensor, torch.Tensor, torch.Tensor, int], None] = None
 ):
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=2e-4)
+    epoch_range = range(1, epochs + 1)
+    if existing_model_path is not None:
+        parameters = torch.load(existing_model_path, map_location=device)
+        model.load_state_dict(parameters["model"])
+        optimizer.load_state_dict(parameters["optimizer"])
+        epoch_range = range(parameters["epoch"] + 1, epochs + 1)
+
     training_losses = []
     val_losses = []
-    for epoch in range(epochs):
+    for epoch in epoch_range:
         model.train(True)
         training_loss = 0
         val_loss = 0
@@ -77,28 +56,25 @@ def train(
         
                 val_loss += loss.item()
                 pbar.set_description(f"val loss for epoch {epoch}: {val_loss / (index + 1):.4f}")
-                if index == index_save:
-                    _save_imgs(model, previous_frames[0], previous_actions[0], imgs[0], epoch)
+                if index == index_save and save_imgs is not None:
+                    save_imgs(model, previous_frames[0], previous_actions[0], imgs[0], epoch)
         training_losses.append(training_loss / len(val_dataloader))
         val_losses.append(val_loss / len(val_dataloader))
         if save_every_epoch is not None and epoch > 0 and epoch % save_every_epoch == 0:
-            torch.save(model.state_dict(), f"model_{epoch}.pth")
+            torch.save({ "model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": epoch }, f"model_{epoch}.pth")
     return training_losses, val_losses
 
-if __name__ == "__main__":
+def _get_ddpm_model(context_length: int, device: str) -> torch.nn.Module:
     T = 1000
     input_channels = 3
-    context_length = 4
+    
     actions_count = 5
-    batch_size = 2
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    # For Mac OS
-    if torch.backends.mps.is_available():
-        device = "mps"
-
-    ddpm = DDPM(
+    
+    import ddpm.modules_v3
+    import ddpm.ddpm
+    return ddpm.ddpm.DDPM(
         T = T,
-        eps_model=UNet(
+        eps_model=ddpm.modules_v3.UNet(
             in_channels=input_channels * (context_length + 1),
             out_channels=3,
             T=T+1,
@@ -109,6 +85,33 @@ if __name__ == "__main__":
         device=device
     )
 
+def _get_edm_model(context_length: int, device: str) -> torch.nn.Module:
+    input_channels = 3
+    
+    actions_count = 5
+    
+    import edm.modules
+    import edm.edm
+    unet = edm.modules.UNet((input_channels) * (context_length + 1), 3, None, actions_count, context_length)
+    return edm.edm.EDM(
+        p_mean=-1.2,
+        p_std=1.2,
+        sigma_data=0.5,
+        model=unet,
+        context_length=context_length,
+        device=device
+    )
+
+if __name__ == "__main__":
+    context_length = 4
+    batch_size = 2
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # For Mac OS
+    if torch.backends.mps.is_available():
+        device = "mps"
+
+    # model = _get_ddpm_model(context_length=context_length, device=device)
+    model = _get_edm_model(context_length=context_length, device=device)
     import torchvision.transforms as transforms
     from torch.utils.data import random_split
 
@@ -123,7 +126,8 @@ if __name__ == "__main__":
         seq_length=context_length,
         transform=transform_to_tensor
     )
-
+    from torch.utils.data import Subset
+    dataset = Subset(dataset, range(10))
     total_size = len(dataset)
     train_size = int(0.8 * total_size)  # 80% for training
     valid_size = total_size - train_size  # 20% for validation
@@ -137,24 +141,41 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
 
-    # from PIL import Image
-    # import numpy as np
-    # import matplotlib.pyplot as plt
-            
-    # obs = next(iter(train_dataloader))[1]
-    # print(obs)
-    # img = Image.fromarray((obs[0,0] * 127.5 + 127.5).long().clip(0,255).permute(1,2,0).detach().cpu().numpy().astype(np.uint8))
-    # plt.imsave(f'test_0.jpg', img)
-    # img = Image.fromarray((obs[0,1] * 127.5 + 127.5).long().clip(0,255).permute(1,2,0).detach().cpu().numpy().astype(np.uint8))
-    # plt.imsave(f'test_1.jpg', img)
-    # img = Image.fromarray((obs[0,2] * 127.5 + 127.5).long().clip(0,255).permute(1,2,0).detach().cpu().numpy().astype(np.uint8))
-    # plt.imsave(f'test_2.jpg', img)
+    import edm.edm
+    import numpy as np
+    import matplotlib.pyplot as plt
+    def _save_edm_imgs(
+        model: edm.edm.EDM,
+        previous_frames: torch.Tensor,
+        previous_actions: torch.Tensor,
+        real_imgs: torch.Tensor,
+        epoch: int
+    ):
+        def get_np_img(tensor: torch.Tensor) -> np.ndarray:
+            return (tensor * 127.5 + 127.5).long().clip(0,255).permute(1,2,0).detach().cpu().numpy().astype(np.uint8)
+        new_img = model.sample(real_imgs.shape, previous_frames.unsqueeze(0), previous_actions.unsqueeze(0), num_steps=10)
+        # new_img = real_imgs.clone().unsqueeze(0)
+
+        height_row = 5
+        col_width = 5
+        cols = len(previous_frames) + 1
+        fig, axes = plt.subplots(2, cols, figsize=(col_width * cols, height_row * 2))
+        for row in range(2):
+            for i in range(len(previous_frames)):
+                axes[row, i].imshow(get_np_img(previous_frames[i]))
+            axes[row, cols - 1].imshow(get_np_img(new_img[0]) if row == 0 else get_np_img(real_imgs))
+        plt.subplots_adjust(wspace=0, hspace=0)
+        
+        # Save the combined figure
+        plt.savefig(f"val_images/{epoch}.png", bbox_inches='tight', pad_inches=0)
+        plt.close()
 
     _, val_losses = train(
-        model=ddpm,
-        optimizer=torch.optim.Adam(params=ddpm.parameters(), lr=2e-4),
-        epochs=1,
+        model=model,
+        epochs=2,
         device=device,
         train_dataloader=train_dataloader,
-        val_dataloader=val_dataloader
+        val_dataloader=val_dataloader,
+        save_every_epoch=1,
+        save_imgs=_save_edm_imgs
     )
