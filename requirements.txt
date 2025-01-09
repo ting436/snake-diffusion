@@ -1,6 +1,10 @@
 click
 torch
 torchvision
-yaml
 matplotlib
 einops
+PyYAML
+pygame
+numpy
+tqdm
+ipywidgets

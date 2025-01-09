@@ -36,7 +36,7 @@ python src/generate_dataset.py --model agent.pth --dataset training_data --recor
 
 Then you can start training with command:
 ```shell
-python src/train.py --model-type edm --output models --loader loader.pkl --gen-val-images --config Diffusion.yaml
+python src/train.py --model-type edm --output-prefix models/model --dataset training_data --gen-val-images --config Diffusion.yaml
 ```
 
 I trained my model on [runpod.io](runpod.io). It had 32 epochs, took ~27 hours and the cost was 10$.

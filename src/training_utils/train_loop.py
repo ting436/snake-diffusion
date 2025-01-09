@@ -26,7 +26,8 @@ def train_loop(
     existing_model_path: Optional[str] = None,
     gen_imgs: Callable[[int], None] = None
 ):
-    os.makedirs(os.path.dirname(output_path_prefix), exist_ok=True)
+    if os.path.dirname(output_path_prefix) != "":
+        os.makedirs(os.path.dirname(output_path_prefix), exist_ok=True)
     if gen_imgs:
         os.makedirs("val_images", exist_ok=True)
     optimizer = torch.optim.Adam(params=model.parameters(), lr=2e-4)

@@ -83,7 +83,7 @@ def _generate_and_save_sample_imgs(
 @click.command()
 @click.option('--config', help='Config for training', metavar='YAML', type=str, required=True, default="config/Diffusion.yaml")
 @click.option('--model-type', type=click.Choice(['ddpm', 'edm'], case_sensitive=False), default='edm')
-@click.option('--output', help='Path to output, which used as prefix with suffix as epoch number', type=str, required=True)
+@click.option('--output-prefix', help='Path to output, which used as prefix with suffix as epoch number', type=str, required=True)
 
 @click.option('--dataset', help='Path to dataset', type=str, required=False)
 @click.option('--output-loader', help='Path to save data loader', type=str, required=False)
@@ -197,7 +197,7 @@ def main(**kwargs):
         config=training_config,
         train_dataloader=train_dataloader,
         val_dataloader=val_dataloader,
-        output_path_prefix=options.output,
+        output_path_prefix=options.output_prefix,
         existing_model_path=options["last_checkpoint"],
         gen_imgs=gen_val_images if options.gen_val_images else None
     )

@@ -232,7 +232,8 @@ class QAgent:
         else:
             self._load_training_data()
         os.makedirs(self.snapshots_path, exist_ok=True)
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        if os.path.dirname(self.model_path) != "":
+            os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
 
     def _clear_training_data(self):
         self.steps = 0
