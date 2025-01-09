@@ -7,7 +7,7 @@ It is an educational repo to build realtime snake game based on Diffusion model.
 
 My goal was to build something similar and I have choosen Snake game for simple logic. It took near 2 months of different experiments to get a ready-to-play model.
 
-If you don't have GPU you can use [runpod.io](runpod.io)(it is paid). Also I created a [Google colab](https://colab.research.google.com/drive/1OxneGBeb4B1U5dszVf_2UDYZLHshJQ5T?usp=sharing) for playing.
+If you don't have GPU you can use [runpod.io](runpod.io)(it is paid).
 
 ## Model scheme 
 
@@ -49,4 +49,5 @@ git clone https://huggingface.co/juramoshkov/snake-diffusion models
 ```
 Then run [Play.ipynb](src/play.ipynb), where you can play Snake with 1 fps 🤓.
 
-Another way to play is to use [Google colab](https://colab.research.google.com/drive/1OxneGBeb4B1U5dszVf_2UDYZLHshJQ5T?usp=sharing)
+Another way to play is to run it on [runpod.io](runpod.io). After deploying Pod (choose RTX 4090 for better performance), copy and paste scripts/runpod.sh to runpod and run it.
+Then open [Play.ipynb](src/play.ipynb)
